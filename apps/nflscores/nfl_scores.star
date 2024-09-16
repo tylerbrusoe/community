@@ -82,6 +82,7 @@ MAGNIFY_LOGO = """
 def main(config):
     renderCategory = []
     selectedTeam = config.get("selectedTeam", "all")
+    gameOption = config.get("gameOption", "all")
     displayType = config.get("displayType", "colors")
     displayTop = config.get("displayTop", "league")
     pregameDisplay = config.get("pregameDisplay", "record")
@@ -93,7 +94,7 @@ def main(config):
     now = time.now().in_location(timezone)
     league = {LEAGUE: API}
     selectedTeam = config.get("selectedTeam", "all")
-    scores = get_scores(league, selectedTeam)
+    scores = get_scores(league, selectedTeam, gameOption, timezone)
     if len(scores) > 0:
         for i, s in enumerate(scores):
             gameStatus = s["status"]["type"]["state"]
@@ -634,6 +635,21 @@ teamOptions = [
     ),
 ]
 
+gameOptions = [
+    schema.Option(
+        display = "All Games",
+        value = "all",
+    ),
+    schema.Option(
+        display = "Live Only",
+        value = "live",
+    ),
+    schema.Option(
+        display = "Today Only",
+        value = "today",
+    ),
+]
+
 rotationOptions = [
     schema.Option(
         display = "3 seconds",
@@ -792,6 +808,14 @@ def get_schema():
                 options = teamOptions,
             ),
             schema.Dropdown(
+                id = "gameOption",
+                name = "Game Option",
+                desc = "Which games to display in the score area.",
+                icon = "gear",
+                default = gameOptions[0].value,
+                options = gameOptions,
+            ),
+            schema.Dropdown(
                 id = "rotationSpeed",
                 name = "Rotation Speed",
                 desc = "Amount of seconds each score is displayed.",
@@ -834,12 +858,13 @@ def get_schema():
         ],
     )
 
-def get_scores(urls, team):
+def get_scores(urls, team, gameOption, timezone):
     allscores = []
     for i, s in urls.items():
         data = get_cachable_data(s)
         decodedata = json.decode(data)
-        allscores.extend(decodedata["events"])
+        games = get_games(decodedata["events"], gameOption, timezone)
+        allscores.extend(games)
         if team != "all" and team != "":
             newScores = []
             for _, s in enumerate(allscores):
@@ -850,6 +875,24 @@ def get_scores(urls, team):
             allscores = newScores
         all([i, allscores])
     return allscores
+
+def get_games(games, gameOption, timezone):
+    if gameOption == "all":
+        return games
+    ret = []
+    now = time.now().in_location(timezone).format("Jan 2")
+
+    for g in games:
+        if gameOption == "today":
+            convertedTime = time.parse_time(g["date"], format = "2006-01-02T15:04Z").in_location(timezone)
+            if convertedTime.format("Jan 2") == now:
+                ret.append(g)
+        elif gameOption == "live":
+            gameStatus = g["status"]["type"]["state"]
+            if gameStatus == "in":
+                ret.append(g)
+
+    return ret
 
 def get_odds(theOdds, theOU, team, homeaway):
     theOddsarray = theOdds.split(" ")
